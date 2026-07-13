@@ -1,0 +1,62 @@
+plugins {
+	id 'java'
+	id 'java-library'
+	id 'maven-publish'
+}
+
+group = 'com.scalar'
+version = '0.9.0'
+description = 'ScalarRE SDK — event body JSON builder/parser/processor'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+	withJavadocJar()
+	withSourcesJar()
+}
+
+// Javadoc doclint gate: enforce well-formed HTML and valid {@link}/@see
+// references across the public API (mirrors the monorepo root configuration).
+tasks.withType(Javadoc).configureEach {
+	options.encoding = 'UTF-8'
+	options.addStringOption('Xdoclint:all,-missing', '-quiet')
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	api 'com.fasterxml.jackson.core:jackson-databind:2.17.0'
+
+	// Storage SDKs — compileOnly to avoid forcing transitive deps on SDK users.
+	// Consumers that use DynamoDB/Cosmos helpers bring their own runtime dependency.
+	compileOnly 'software.amazon.awssdk:dynamodb:2.25.0'
+	compileOnly 'com.azure:azure-cosmos:4.56.0'
+
+	testImplementation platform('org.junit:junit-bom:5.10.0')
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testImplementation 'org.assertj:assertj-core:3.25.3'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	testImplementation 'software.amazon.awssdk:dynamodb:2.25.0'
+	testImplementation 'com.azure:azure-cosmos:4.56.0'
+	// ScalarDB — used only to cross-check the SDK's key encoding against the real encoder.
+	testImplementation 'com.scalar-labs:scalardb:3.17.1'
+}
+
+test {
+	useJUnitPlatform()
+}
+
+// Publish to the local Maven repository (~/.m2) so downstream projects can
+// depend on the SDK without a remote Maven registry:
+//   ./gradlew publishToMavenLocal
+//   implementation 'com.scalar:scalar-re-sdk:0.9.0'   (with mavenLocal())
+publishing {
+	publications {
+		mavenJava(MavenPublication) {
+			from components.java
+		}
+	}
+}
