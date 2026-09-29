@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'com.scalar'
-version = '0.9.4'
+version = '0.9.5'
 description = 'ScalarRE SDK — event body JSON builder/parser/processor'
 
 java {
