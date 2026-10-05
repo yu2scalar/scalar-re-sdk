@@ -15,6 +15,7 @@
  */
 package com.scalar.re.sdk.storage.dynamo;
 
+import com.scalar.re.sdk.storage.TxState;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
@@ -40,8 +41,8 @@ public final class DynamoOutboxWriter {
     static final String EVENT_ID = "event_id";
     static final String BODY = "body";
     static final String CREATED_AT = "created_at";
-    static final String TX_STATE = "tx_state";
-    static final int TX_STATE_COMMITTED = 3;
+    static final String TX_STATE = TxState.COLUMN;
+    static final int TX_STATE_COMMITTED = TxState.COMMITTED;
 
     private DynamoOutboxWriter() {}
 

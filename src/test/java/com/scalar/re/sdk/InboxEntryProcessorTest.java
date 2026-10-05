@@ -239,4 +239,15 @@ class InboxEntryProcessorTest {
                 .findFirst().orElseThrow();
         assertFalse(analyticsEntry.isAckRequired());
     }
+
+    /** A null steps / sequences / routing list yields no entries instead of an NPE (P5, R-02). */
+    @Test
+    void nullStepsSequencesOrRouting_yieldNoEntries() throws Exception {
+        assertTrue(InboxEntryProcessor.process(new ReEventBody(null)).isEmpty());
+        List<com.scalar.re.sdk.model.Step> steps = new java.util.ArrayList<>();
+        steps.add(new com.scalar.re.sdk.model.Step(1, null));
+        steps.add(new com.scalar.re.sdk.model.Step(2, List.of(
+                new com.scalar.re.sdk.model.Sequence(1, null, null, null))));
+        assertTrue(InboxEntryProcessor.process(new ReEventBody(steps)).isEmpty());
+    }
 }

@@ -17,9 +17,9 @@ package com.scalar.re.sdk.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.scalar.re.sdk.routing.Destinations;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ReEventBody {
@@ -41,15 +41,14 @@ public class ReEventBody {
         this.steps = steps;
     }
 
+    /**
+     * Destinations of the first step (null / blank destinations and the relay ack marker skipped).
+     * The notify payload uses {@link com.scalar.re.sdk.routing.Destinations#writeTargets} instead,
+     * which covers every step for non-relay delivery types.
+     */
     @JsonIgnore
     public Set<String> getFirstStepRoutingNamespaces() {
         if (steps == null || steps.isEmpty()) return Set.of();
-        Step firstStep = steps.get(0);
-        if (firstStep.getSequences() == null) return Set.of();
-        return firstStep.getSequences().stream()
-                .filter(seq -> seq.getRouting() != null)
-                .flatMap(seq -> seq.getRouting().stream())
-                .map(RoutingDestination::getDestination)
-                .collect(Collectors.toSet());
+        return Destinations.of(steps.get(0));
     }
 }

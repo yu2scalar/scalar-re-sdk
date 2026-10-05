@@ -151,6 +151,34 @@ public enum ReSdkError implements ScalarReError {
             "An ordered delivery type was built with a step holding zero or multiple sequences; "
                     + "ordered simplifies the ordering unit to one sequence per step",
             "Use exactly one sequence per step for an ordered body"),
+
+    STEPS_REQUIRED(
+            Category.INPUT,
+            "014",
+            Severity.ERROR,
+            "The body must have at least one step",
+            "The body builder was given no step; the RE core treats a body without steps as a "
+                    + "poison message and moves it to the DLQ",
+            "Add at least one step (addStep(...)) before building the body"),
+
+    ROUTING_DESTINATION_BLANK(
+            Category.INPUT,
+            "015",
+            Severity.ERROR,
+            "Routing destination must not be null or blank (step=%s, seq=%s)",
+            "A routing entry has a null, empty or blank destination; it names no namespace to "
+                    + "deliver to",
+            "Set a destination namespace on every routing entry"),
+
+    INVALID_DECISION(
+            Category.INPUT,
+            "016",
+            Severity.ERROR,
+            "Unknown relay decision '%s' (step=%s)",
+            "A relay step decision is not one of the allowed values (case-sensitive); an unknown "
+                    + "value would otherwise be silently treated as ALL_SUCCESS",
+            "Use ALL_SUCCESS, ANY_SUCCESS (RelayProtocol constants), or leave the decision unset "
+                    + "(= ALL_SUCCESS)"),
     ;
 
     private final Category category;

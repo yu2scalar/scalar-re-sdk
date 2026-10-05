@@ -16,14 +16,16 @@
 package com.scalar.re.sdk.builder;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.scalar.re.sdk.error.ReInputException;
 import com.scalar.re.sdk.error.ReSdkError;
+import com.scalar.re.sdk.metadata.ReservedMetadata;
 import com.scalar.re.sdk.model.ReEventBody;
 import com.scalar.re.sdk.model.RoutingDestination;
 import com.scalar.re.sdk.model.Sequence;
 import com.scalar.re.sdk.model.Step;
+import com.scalar.re.sdk.routing.BodyRules;
+import com.scalar.re.sdk.routing.Destinations;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,14 +34,6 @@ import java.util.function.Consumer;
 public class ReEventBodyBuilder {
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
-
-    /** Reserved metadata namespace object key (data-model §4.5). {@code metadata.re.{partition,ordinal}}. */
-    private static final String RESERVED_METADATA_KEY = "re";
-    /**
-     * Upper bound of the normal partition range (data-model §3, {@code ReConstants.MAX_NORMAL_PARTITION}).
-     * {@code re.partition} must be in {@code [0, 9999]}; {@code [10000, BIGINT_MAX]} is Replay-reserved.
-     */
-    private static final long MAX_NORMAL_PARTITION = 9999L;
 
     private String deliveryType = "relay";
     private final List<Step> steps = new ArrayList<>();
@@ -89,13 +83,21 @@ public class ReEventBodyBuilder {
     public NotifyPayload toNotifyPayload() throws JsonProcessingException {
         ReEventBody built = build();
         String bodyJson = objectMapper.writeValueAsString(built);
-        return new NotifyPayload(bodyJson, built.getFirstStepRoutingNamespaces());
+        // The destinations this transfer writes (data-model §4.3.2): relay = the first step, every
+        // other delivery type = all steps. The core's poll and relay advance use the same set.
+        return new NotifyPayload(bodyJson, Destinations.writeTargets(built, deliveryType));
     }
 
     private void validate() {
         if (deliveryType == null) {
             throw new ReInputException(ReSdkError.DELIVERY_TYPE_REQUIRED);
         }
+
+        // Body rules shared with the RE core (data-model §4.3.1): at least one step, and no routing
+        // entry without a destination. Routing required per delivery type and configured namespaces
+        // are checked by the core only (the SDK does not know the config).
+        BodyRules.requireSteps(steps);
+        BodyRules.requireDestinationsNotBlank(steps);
 
         // Universal-reject (whitelist principle, §1.17): ScalarRE-managed step fields must never be
         // set on a producer body, regardless of delivery type. The core populates them and ignores
@@ -131,7 +133,9 @@ public class ReEventBodyBuilder {
                 validateOrderedAtomic();
                 break;
             case "relay":
-                // relay is the only type that accepts decision / on_failure / on_failure_payload.
+                // relay is the only type that accepts decision / on_failure / on_failure_payload;
+                // the decision must be a known value (delivery-relay D6).
+                BodyRules.requireKnownDecisions(steps);
                 break;
             default:
                 throw new ReInputException(ReSdkError.UNKNOWN_DELIVERY_TYPE, deliveryType);
@@ -157,45 +161,11 @@ public class ReEventBodyBuilder {
      *   <li>{@code re.ordinal} (honored only for ordered, ignored otherwise): when present, a
      *       non-negative integer.</li>
      * </ul>
-     * Absent {@code metadata} / absent {@code re} object = nothing to validate (passes).
+     * Absent {@code metadata} / absent {@code re} object = nothing to validate (passes). The rules
+     * live in {@link ReservedMetadata} so the RE core applies the same ones.
      */
     private void validateReservedMetadata() {
-        for (Step step : steps) {
-            if (step.getSequences() == null) continue;
-            for (Sequence seq : step.getSequences()) {
-                JsonNode metadata = seq.getMetadata();
-                if (metadata == null || !metadata.isObject()) continue;
-                JsonNode re = metadata.get(RESERVED_METADATA_KEY);
-                if (re == null || re.isNull()) continue;
-                if (!re.isObject()) {
-                    // metadata.re must be the reserved namespace object, not a scalar/array.
-                    throw new ReInputException(ReSdkError.RE_PARTITION_OUT_OF_RANGE,
-                            MAX_NORMAL_PARTITION, "metadata.re is not an object: " + re.getNodeType());
-                }
-                validateRePartition(re.get("partition"));
-                validateReOrdinal(re.get("ordinal"));
-            }
-        }
-    }
-
-    private void validateRePartition(JsonNode partition) {
-        if (partition == null || partition.isNull()) return;  // absent = LB by hash (§4.5)
-        if (!partition.isIntegralNumber() || !partition.canConvertToLong()) {
-            throw new ReInputException(ReSdkError.RE_PARTITION_OUT_OF_RANGE,
-                    MAX_NORMAL_PARTITION, partition.asText());
-        }
-        long value = partition.asLong();
-        if (value < 0 || value > MAX_NORMAL_PARTITION) {
-            throw new ReInputException(ReSdkError.RE_PARTITION_OUT_OF_RANGE,
-                    MAX_NORMAL_PARTITION, Long.toString(value));
-        }
-    }
-
-    private void validateReOrdinal(JsonNode ordinal) {
-        if (ordinal == null || ordinal.isNull()) return;  // optional (ordered only)
-        if (!ordinal.isIntegralNumber() || !ordinal.canConvertToLong() || ordinal.asLong() < 0) {
-            throw new ReInputException(ReSdkError.RE_ORDINAL_INVALID, ordinal.asText());
-        }
+        ReservedMetadata.validateValues(steps);
     }
 
     private void validatePartial() {
@@ -288,30 +258,8 @@ public class ReEventBodyBuilder {
      * {@link #validateReservedMetadata}; here we enforce their <i>presence</i> (required for ordered).
      */
     private void validateOrderedCommon(String deliveryTypeName) {
-        if (steps.size() != 1) {
-            throw new ReInputException(ReSdkError.MULTI_STEP_NOT_SUPPORTED, deliveryTypeName, steps.size());
-        }
+        ReservedMetadata.validateOrderedShape(deliveryTypeName, steps);
         validateNoRelayFields(deliveryTypeName);
-        for (Step step : steps) {
-            List<Sequence> sequences = step.getSequences();
-            if (sequences == null || sequences.size() != 1) {
-                throw new ReInputException(ReSdkError.ORDERED_SINGLE_SEQUENCE_REQUIRED,
-                        deliveryTypeName, sequences == null ? 0 : sequences.size());
-            }
-            for (Sequence seq : sequences) {
-                JsonNode metadata = seq.getMetadata();
-                JsonNode re = (metadata != null && metadata.isObject())
-                        ? metadata.get(RESERVED_METADATA_KEY) : null;
-                JsonNode partition = (re != null && re.isObject()) ? re.get("partition") : null;
-                JsonNode ordinal = (re != null && re.isObject()) ? re.get("ordinal") : null;
-                if (partition == null || partition.isNull()) {
-                    throw new ReInputException(ReSdkError.ORDERED_PARTITION_REQUIRED, deliveryTypeName);
-                }
-                if (ordinal == null || ordinal.isNull()) {
-                    throw new ReInputException(ReSdkError.ORDERED_ORDINAL_REQUIRED, deliveryTypeName);
-                }
-            }
-        }
     }
 
     /** Atomic-base ordered carries its fixed destination(s) in body routing (single or broadcast). */

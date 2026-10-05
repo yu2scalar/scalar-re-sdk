@@ -15,6 +15,7 @@
  */
 package com.scalar.re.sdk.storage.cosmos;
 
+import com.scalar.re.sdk.storage.TxState;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -33,8 +34,8 @@ public final class CosmosOutboxWriter {
 
     static final String VALUE_BODY = "body";
     static final String VALUE_CREATED_AT = "created_at";
-    static final String VALUE_TX_STATE = "tx_state";
-    static final int TX_STATE_COMMITTED = 3;
+    static final String VALUE_TX_STATE = TxState.COLUMN;
+    static final int TX_STATE_COMMITTED = TxState.COMMITTED;
 
     private CosmosOutboxWriter() {}
 

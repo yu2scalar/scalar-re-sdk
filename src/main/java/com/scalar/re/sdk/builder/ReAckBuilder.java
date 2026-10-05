@@ -19,6 +19,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.scalar.re.sdk.model.ReEventBody;
+import com.scalar.re.sdk.model.RelayProtocol;
 import com.scalar.re.sdk.model.RoutingDestination;
 import com.scalar.re.sdk.model.Sequence;
 import com.scalar.re.sdk.model.Step;
@@ -46,7 +47,6 @@ import java.util.List;
 public class ReAckBuilder {
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
-    private static final String RELAY_ROUTING = "re.relay";
 
     private String originalEventType;
     private String originalEventId;
@@ -108,7 +108,7 @@ public class ReAckBuilder {
         // Build sequence with routing="re.relay"
         Sequence sequence = new Sequence(
                 1,
-                List.of(new RoutingDestination(RELAY_ROUTING, false)),
+                List.of(new RoutingDestination(RelayProtocol.RELAY_ROUTING, false)),
                 payload,
                 metadata != null ? objectMapper.valueToTree(metadata) : null
         );

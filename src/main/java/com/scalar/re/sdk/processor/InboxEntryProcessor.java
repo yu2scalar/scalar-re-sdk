@@ -46,9 +46,16 @@ public class InboxEntryProcessor {
      */
     public static List<InboxEntry> process(ReEventBody eventBody) throws JsonProcessingException {
         List<InboxEntry> entries = new ArrayList<>();
+        if (eventBody.getSteps() == null) {
+            return entries;
+        }
 
+        // A null steps / sequences / routing list yields no entries (instead of an NPE). The RE core
+        // rejects such a body before the transfer (data-model §4.3.1), so nothing is lost here.
         for (Step step : eventBody.getSteps()) {
+            if (step.getSequences() == null) continue;
             for (Sequence sequence : step.getSequences()) {
+                if (sequence.getRouting() == null) continue;
                 for (RoutingDestination rd : sequence.getRouting()) {
                     String body = buildInboxBody(eventBody, step, List.of(sequence));
                     entries.add(new InboxEntry(rd.getDestination(), step.getStepId(), sequence.getSeq(),

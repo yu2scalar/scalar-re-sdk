@@ -27,7 +27,11 @@ import java.util.Map;
  * <p>For relay-origin DLQ (decision NG / ack timeout, recovery.md §7.5.3), the
  * relay progress at the moment of DLQ entry is preserved so the operator can
  * inspect how far delivery got before deciding to delete / re-produce. These
- * fields are null for push-origin DLQ.
+ * fields are null for push-origin DLQ, except when a relay step 2+ outbox row (a relay hold body)
+ * is moved by the push path (P6 Q4).
+ *
+ * <p>{@code raw_body}: the source body as is, when it could not be read as JSON (then
+ * {@code original_body} is null). Kept so the operator can inspect it (data-model §6.4, P6).
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ReHoldTrackingDlq {
@@ -50,6 +54,10 @@ public class ReHoldTrackingDlq {
 
     @JsonProperty("status_per_destination")
     private Map<String, DestinationStatus> statusPerDestination;
+
+    // the unreadable source body as is (original_body is then null). null otherwise.
+    @JsonProperty("raw_body")
+    private String rawBody;
 
     public ReHoldTrackingDlq() {
     }
@@ -85,6 +93,9 @@ public class ReHoldTrackingDlq {
 
     public Integer getReachedStep() { return reachedStep; }
     public void setReachedStep(Integer reachedStep) { this.reachedStep = reachedStep; }
+
+    public String getRawBody() { return rawBody; }
+    public void setRawBody(String rawBody) { this.rawBody = rawBody; }
 
     public Map<String, DestinationStatus> getStatusPerDestination() { return statusPerDestination; }
     public void setStatusPerDestination(Map<String, DestinationStatus> statusPerDestination) {

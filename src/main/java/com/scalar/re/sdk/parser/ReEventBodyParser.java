@@ -43,11 +43,28 @@ public class ReEventBodyParser {
     }
 
     /**
-     * Check if the JSON represents a re_hold body (has "original_body" field).
+     * Check if the JSON represents a re_hold body: both {@code original_body} and {@code tracking}
+     * at the top level (data-model §6.4). A producer body that happens to carry a top-level
+     * {@code original_body} key is still an event body.
      */
     public static boolean isHoldBody(String json) throws JsonProcessingException {
+        return isHoldNode(objectMapper.readTree(json));
+    }
+
+    /**
+     * Parse an outbox / hold body JSON once, deciding event body vs hold body with the same rule as
+     * {@link #isHoldBody}. The result is passed along instead of re-parsing the JSON.
+     */
+    public static ParsedBody parseAny(String json) throws JsonProcessingException {
         JsonNode node = objectMapper.readTree(json);
-        return node.has("original_body");
+        if (isHoldNode(node)) {
+            return ParsedBody.ofHold(objectMapper.treeToValue(node, ReHoldBody.class));
+        }
+        return ParsedBody.ofEvent(objectMapper.treeToValue(node, ReEventBody.class));
+    }
+
+    private static boolean isHoldNode(JsonNode node) {
+        return node != null && node.isObject() && node.has("original_body") && node.has("tracking");
     }
 
     /**
@@ -114,6 +131,25 @@ public class ReEventBodyParser {
             Integer reachedStep, Map<String, DestinationStatus> statusPerDestination) {
         ReHoldTrackingDlq tracking = new ReHoldTrackingDlq(
                 errorType, errorMessage, retryCount, failedAt, reachedStep, statusPerDestination);
+        JsonNode trackingNode = objectMapper.valueToTree(tracking);
+        return new ReHoldBody(originalBody, trackingNode);
+    }
+
+    /**
+     * Build a ReHoldBody with DLQ tracking — the general form every DLQ write uses (recovery.md
+     * §7.1, P6): relay progress when there is one, and the unreadable source body as
+     * {@code raw_body} when {@code originalBody} could not be built.
+     *
+     * @param reachedStep          relay progress, or null
+     * @param statusPerDestination relay progress, or null
+     * @param rawBody              the source body as is when it was not readable JSON, or null
+     */
+    public static ReHoldBody buildDlqHoldBody(ReEventBody originalBody, String errorType,
+            String errorMessage, int retryCount, long failedAt, Integer reachedStep,
+            Map<String, DestinationStatus> statusPerDestination, String rawBody) {
+        ReHoldTrackingDlq tracking = new ReHoldTrackingDlq(
+                errorType, errorMessage, retryCount, failedAt, reachedStep, statusPerDestination);
+        tracking.setRawBody(rawBody);
         JsonNode trackingNode = objectMapper.valueToTree(tracking);
         return new ReHoldBody(originalBody, trackingNode);
     }
